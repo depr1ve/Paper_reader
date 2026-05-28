@@ -6,10 +6,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.messages.base import BaseMessage
 
-from basic_chain import basic_chain, get_model
-from remote_loader import get_wiki_docs
-from splitter import split_documents
-from vector_store import create_vector_db
+from src.basic_chain import basic_chain, get_model
+from src.remote_loader import get_wiki_docs
+from src.splitter import split_documents
+from src.vector_store import create_vector_db
 
 
 def find_similar(vs, query):

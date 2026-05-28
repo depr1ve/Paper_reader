@@ -4,13 +4,13 @@ from typing import List
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from local_loader import get_document_text
-from remote_loader import download_file
-from splitter import split_documents
+from src.local_loader import get_document_text
+from src.remote_loader import download_file
+from src.splitter import split_documents
 from dotenv import load_dotenv
 from time import sleep
 
-from config import EMBEDDING_MODEL
+from src.config import EMBEDDING_MODEL
 
 EMBED_DELAY = 0.02  # 20 milliseconds
 
@@ -40,7 +40,7 @@ def create_vector_db(texts, embeddings=None, collection_name="chroma"):
     proxy_embeddings = EmbeddingProxy(embeddings)
     # Create a vectorstore from documents
     # this will be a chroma collection with a default name.
-    from config import VECTOR_STORE_DIR
+    from src.config import VECTOR_STORE_DIR
     db = Chroma(collection_name=collection_name,
                 embedding_function=proxy_embeddings,
                 persist_directory=os.path.join(VECTOR_STORE_DIR, collection_name))

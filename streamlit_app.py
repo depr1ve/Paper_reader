@@ -4,13 +4,13 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
-from config import (
+from src.config import (
     EMBEDDING_MODEL, VECTOR_BACKEND,
     DEEPSEEK_API_KEY as ENV_DEEPSEEK_KEY,
 )
-from ensemble import ensemble_retriever_from_docs
-from full_chain import create_full_chain, ask_question
-from local_loader import load_documents, get_document_text
+from src.ensemble import ensemble_retriever_from_docs
+from src.full_chain import create_full_chain, ask_question
+from src.local_loader import load_documents, get_document_text
 
 st.set_page_config(page_title="RAG Paper Reader", page_icon="📄")
 st.title("📄 RAG Paper Reader - 论文问答")
@@ -86,7 +86,7 @@ def get_local_retriever():
 
 @st.cache_resource
 def get_supabase_retriever(_url, _key):
-    from supabase_store import get_supabase_retriever as sup_ret
+    from src.supabase_store import get_supabase_retriever as sup_ret
     embeddings = get_embeddings()
     return sup_ret(embeddings)
 
@@ -102,14 +102,14 @@ if uploaded_file is not None:
                 embeddings = get_embeddings()
 
                 if backend == "supabase":
-                    from supabase_store import add_documents_to_supabase
+                    from src.supabase_store import add_documents_to_supabase
                     n_chunks = add_documents_to_supabase(docs, embeddings)
                     st.success(f"✅ 已上传至 Supabase 云端: {uploaded_file.name}")
                     get_supabase_retriever.clear()
                 else:
-                    from splitter import split_documents
-                    from vector_store import create_vector_db
-                    from config import CHROMA_COLLECTION
+                    from src.splitter import split_documents
+                    from src.vector_store import create_vector_db
+                    from src.config import CHROMA_COLLECTION
                     texts = split_documents(docs)
                     create_vector_db(texts, embeddings, collection_name=CHROMA_COLLECTION)
                     st.success(f"✅ 已添加至本地向量库: {uploaded_file.name}（{len(texts)} chunks）")

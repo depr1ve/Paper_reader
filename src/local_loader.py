@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
 
-from config import DATA_DIR
+from src.config import DATA_DIR
 
 
 def list_files(data_dir=None, pattern="**/*.txt"):

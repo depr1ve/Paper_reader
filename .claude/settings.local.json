@@ -36,7 +36,13 @@
       "Bash(git init *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(rm -rf data_bak Pages ARCHITECTURE.md)",
+      "Bash(ls -la examples/)",
+      "Bash(ls -d */)",
+      "Bash(timeout 5 /e/Anaconda/Scripts/streamlit.exe run streamlit_app.py --server.port=8503)"
     ]
   }
 }

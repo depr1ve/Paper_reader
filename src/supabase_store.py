@@ -3,7 +3,7 @@ import httpx
 from supabase import create_client
 from langchain_community.vectorstores import SupabaseVectorStore
 
-from config import (
+from src.config import (
     SUPABASE_URL, SUPABASE_KEY, SUPABASE_TABLE, SUPABASE_QUERY_NAME,
     SUPABASE_PROXY,
 )
@@ -34,7 +34,7 @@ def create_supabase_vector_store(embeddings):
 
 def add_documents_to_supabase(docs, embeddings):
     """将文档写入 Supabase 向量库"""
-    from splitter import split_documents
+    from src.splitter import split_documents
     texts = split_documents(docs)
     print(f"Split into {len(texts)} chunks, uploading to Supabase...")
 

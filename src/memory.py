@@ -11,8 +11,8 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-from basic_chain import get_model
-from rag_chain import make_rag_chain
+from src.basic_chain import get_model
+from src.rag_chain import make_rag_chain
 
 
 def create_memory_chain(llm, base_chain, chat_memory):

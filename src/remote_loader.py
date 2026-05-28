@@ -2,7 +2,7 @@ import requests
 import os
 
 from langchain_community.document_loaders import WebBaseLoader, WikipediaLoader
-from local_loader import get_document_text
+from src.local_loader import get_document_text
 from langchain_community.document_loaders import OnlinePDFLoader
 
 

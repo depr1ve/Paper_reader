@@ -4,11 +4,11 @@ from dotenv import load_dotenv
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 
-from basic_chain import get_model
-from filter import ensemble_retriever_from_docs
-from local_loader import load_documents
-from memory import create_memory_chain
-from rag_chain import make_rag_chain
+from src.basic_chain import get_model
+from src.filter import ensemble_retriever_from_docs
+from src.local_loader import load_documents
+from src.memory import create_memory_chain
+from src.rag_chain import make_rag_chain
 
 
 def create_full_chain(retriever, chat_memory=ChatMessageHistory()):

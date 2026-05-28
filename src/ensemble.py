@@ -4,16 +4,16 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_core.output_parsers import StrOutputParser
 
-from basic_chain import get_model
-from rag_chain import make_rag_chain
-from remote_loader import load_web_page
-from splitter import split_documents
-from vector_store import create_vector_db
+from src.basic_chain import get_model
+from src.rag_chain import make_rag_chain
+from src.remote_loader import load_web_page
+from src.splitter import split_documents
+from src.vector_store import create_vector_db
 from dotenv import load_dotenv
 
 
 def ensemble_retriever_from_docs(docs, embeddings=None):
-    from config import CHROMA_COLLECTION
+    from src.config import CHROMA_COLLECTION
     texts = split_documents(docs)
     vs = create_vector_db(texts, embeddings, collection_name=CHROMA_COLLECTION)
     vs_retriever = vs.as_retriever()
