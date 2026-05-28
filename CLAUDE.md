@@ -40,42 +40,87 @@ src/
 
 ### 本地开发
 - `.env` 文件存放 API Key
+- 国内用户设置 `HF_ENDPOINT=https://hf-mirror.com` 加速 HuggingFace 模型下载
 - 向量库默认 `chroma`，可在侧边栏切换 `supabase`
+- Embedding 模型首次提问时延迟加载，不会阻塞页面启动
 
 ### Streamlit Cloud 部署
-- 用 `secrets.toml` 或 Cloud Secrets 配置
+- 必须用 Cloud Secrets 配置（`secrets.toml` 不会推送到 GitHub）
 - 必须用 `VECTOR_BACKEND=supabase`（Cloud 磁盘不持久化）
+- Cloud 使用 Python 3.14，`requirements.txt` 不锁版本号以保持兼容
+- 当 API Key / Supabase 已从 Secrets 配置时，侧边栏自动隐藏敏感信息
+
+## 配置项
+
+| 变量 | 说明 | 必填 |
+|------|------|------|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key | 是 |
+| `DEEPSEEK_BASE_URL` | DeepSeek API 地址 | 否（默认 api.deepseek.com） |
+| `DEEPSEEK_MODEL` | DeepSeek 模型名 | 否（默认 deepseek-chat） |
+| `EMBEDDING_MODEL` | HuggingFace Embedding 模型 | 否（默认 BAAI/bge-small-zh-v1.5） |
+| `HF_ENDPOINT` | HuggingFace 镜像（国内加速） | 否（国内推荐 hf-mirror.com） |
+| `VECTOR_BACKEND` | 向量后端：`chroma` 或 `supabase` | 否（Cloud 部署必须 supabase） |
+| `SUPABASE_URL` | Supabase 项目 URL | 仅 supabase 模式 |
+| `SUPABASE_KEY` | Supabase service_role key | 仅 supabase 模式 |
+| `SUPABASE_PROXY` | Supabase 代理地址 | 否（国内访问需要） |
+| `CHROMA_COLLECTION` | Chroma 集合名 | 否（默认 papers） |
 
 ## Supabase 表结构
 
 ```sql
-papers (
-    id uuid PRIMARY KEY,
+create extension if not exists vector;
+
+create table if not exists papers (
+    id uuid primary key default gen_random_uuid(),
     content text,
     metadata jsonb,
     embedding vector(512)
+);
+
+create or replace function match_papers(
+    query_embedding vector(512),
+    match_count int default 4
 )
--- 检索函数: match_papers(query_embedding, match_count)
+returns table (
+    id uuid,
+    content text,
+    metadata jsonb,
+    similarity float
+)
+language plpgsql
+as $$
+begin
+    return query
+    select
+        p.id,
+        p.content,
+        p.metadata,
+        1 - (p.embedding <=> query_embedding) as similarity
+    from papers p
+    order by p.embedding <=> query_embedding
+    limit match_count;
+end;
+$$;
 ```
 
 ## 关键依赖
 
 ```
-langchain, langchain-openai, langchain-community
-chromadb (仅本地模式)
-supabase, pgvector (仅云端模式)
-sentence-transformers (BAAI/bge-small-zh-v1.5)
-pypdf, streamlit, rank-bm25
+streamlit                 # UI
+langchain, langchain-community, langchain-core, langchain-openai, langchain-classic
+chromadb                  # 本地向量库
+supabase, httpx           # 云端向量库
+sentence-transformers     # BAAI/bge-small-zh-v1.5 Embedding
+pypdf, rank-bm25, rich, python-dotenv
 ```
 
-## API Key
-
-- DeepSeek: `DEEPSEEK_API_KEY`（平台: platform.deepseek.com）
-- Supabase: `SUPABASE_URL` + `SUPABASE_KEY`（service_role key）
+依赖不锁版本号，以兼容 Streamlit Cloud 的 Python 3.14。
 
 ## 注意事项
 
 - `.streamlit/` 和 `.env` 在 `.gitignore` 中，不会提交到 GitHub
+- Embedding 模型首次运行从 HuggingFace 下载（约 100MB），国内需配置 `HF_ENDPOINT` 镜像
+- Streamlit Cloud 部署前确保已建好 Supabase 表和 `match_papers` 函数
+- 本地 Chroma 模式：论文 PDF 放在 `data/` 目录，启动后上传或自动加载
 - Supabase 从国内访问可能需要代理，配置 `SUPABASE_PROXY`
-- Embedding 模型首次运行从 HuggingFace 下载（约 100MB），后续用缓存
-- 论文 PDF 放在 `data/` 目录，启用 `chroma` 后端时自动加载
+- `__pycache__/` 目录已 gitignore，可随时删除
