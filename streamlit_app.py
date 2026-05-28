@@ -43,22 +43,27 @@ with st.sidebar:
     )
 
     if backend == "supabase":
-        supabase_url = st.text_input(
-            "Supabase URL",
-            value=os.getenv("SUPABASE_URL", ""),
-            placeholder="https://xxx.supabase.co",
-        )
-        supabase_key_input = st.text_input(
-            "Supabase Key",
-            value=os.getenv("SUPABASE_KEY", ""),
-            type="password",
-            placeholder="sb_secret_...",
-            help="需 service_role key 才能写入向量",
-        )
-        if supabase_url:
-            os.environ["SUPABASE_URL"] = supabase_url
-        if supabase_key_input:
-            os.environ["SUPABASE_KEY"] = supabase_key_input
+        has_url = bool(os.getenv("SUPABASE_URL"))
+        has_key = bool(os.getenv("SUPABASE_KEY"))
+        if has_url and has_key:
+            st.success("✅ Supabase 已配置（从 Secrets）")
+        else:
+            supabase_url = st.text_input(
+                "Supabase URL",
+                value=os.getenv("SUPABASE_URL", ""),
+                placeholder="https://xxx.supabase.co",
+            )
+            supabase_key_input = st.text_input(
+                "Supabase Key",
+                value=os.getenv("SUPABASE_KEY", ""),
+                type="password",
+                placeholder="sb_secret_...",
+                help="需 service_role key 才能写入向量",
+            )
+            if supabase_url:
+                os.environ["SUPABASE_URL"] = supabase_url
+            if supabase_key_input:
+                os.environ["SUPABASE_KEY"] = supabase_key_input
 
     st.divider()
     st.subheader("📤 上传论文")
