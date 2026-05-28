@@ -23,14 +23,18 @@ st.caption("上传论文 PDF，基于 RAG 进行智能问答 | 支持 LaTeX 公�
 # ---- 侧边栏 ----
 with st.sidebar:
     st.subheader("🔑 API 配置")
-    deepseek_key = st.text_input(
-        "DeepSeek API Key",
-        value=ENV_DEEPSEEK_KEY if ENV_DEEPSEEK_KEY else "",
-        type="password",
-        placeholder="sk-...",
-    )
-    if deepseek_key:
-        os.environ["DEEPSEEK_API_KEY"] = deepseek_key
+    if ENV_DEEPSEEK_KEY:
+        st.success("✅ DeepSeek API 已配置（从 Secrets）")
+        deepseek_key = ENV_DEEPSEEK_KEY
+    else:
+        deepseek_key = st.text_input(
+            "DeepSeek API Key",
+            value="",
+            type="password",
+            placeholder="sk-...",
+        )
+        if deepseek_key:
+            os.environ["DEEPSEEK_API_KEY"] = deepseek_key
 
     st.divider()
     st.subheader("🗄️ 向量库后端")
