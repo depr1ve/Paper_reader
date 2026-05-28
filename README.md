@@ -1,173 +1,213 @@
+# 📄 RAG Paper Reader — 论文智能问答系统
 
-# LangChain and Streamlit RAG
+基于 Retrieval-Augmented Generation (RAG) 的论文阅读助手。上传 PDF/TXT 论文后，通过自然语言提问，系统自动检索相关段落并结合 LLM 生成高质量回答。
 
-## Demo App on Community Cloud
+**Live Demo**: [Streamlit Cloud](https://paperreader.streamlit.app/)
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://st-lc-rag.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://paperreader.streamlit.app/)
 
+---
 
-## Quickstart
+## 架构概览
 
-### Setup Python environment
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  📤 论文上传  │ ──▶ │  📦 文档分块   │ ──▶ │  🧬 Embedding   │
+│  (PDF/TXT)   │     │ chunk=1000    │     │  bge-small-zh   │
+└─────────────┘     │ overlap=200    │     └───────┬─────────┘
+                    └──────────────┘             │
+                                          ┌──────▼─────────┐
+                                          │  🗄️ 向量数据库   │
+                                          │  Supabase/Chroma│
+                                          └──────┬─────────┘
+                                                 │
+┌─────────────┐     ┌──────────────┐     ┌──────▼─────────┐
+│  💬 用户提问  │ ──▶ │  🔄 问题改写   │ ──▶ │  🔍 混合检索   │
+│              │     │  (对话记忆)    │     │  BM25 + 向量   │
+└─────────────┘     └──────────────┘     └──────┬─────────┘
+                                                 │
+                                          ┌──────▼─────────┐
+                                          │  🧠 LLM 生成    │
+                                          │  DeepSeek-Chat │
+                                          └──────┬─────────┘
+                                                 │
+                                          ┌──────▼─────────┐
+                                          │  📝 回答输出    │
+                                          │  Markdown+LaTeX│
+                                          └────────────────┘
+```
 
-The Python version used when this was developed was 3.10.13
+---
 
+## 核心技术
+
+### 1. Embedding 模型
+
+| | 详情 |
+|---|---|
+| **模型** | `BAAI/bge-small-zh-v1.5` |
+| **维度** | 512 |
+| **特点** | 中文优化，本地运行无 API 成本，轻量（~100MB） |
+| **运行方式** | `sentence-transformers` 加载，首次自动从 HuggingFace 下载并缓存 |
+| **国内加速** | 设置 `HF_ENDPOINT=https://hf-mirror.com` 走镜像 |
+
+选用原因：bge-small-zh 在中文语义理解 benchmark 上表现优异，512 维在精度和检索速度之间取得良好平衡。本地运行避免了 Embedding API 的调用延迟和费用。
+
+### 2. 向量库双后端
+
+| 后端 | 技术 | 适用场景 |
+|---|---|---|
+| **Supabase pgvector** | PostgreSQL + pgvector 扩展 + HNSW 索引 | 生产部署、多端共享、永久存储 |
+| **Chroma** | 本地向量库，持久化到磁盘 | 本地开发、离线使用、零配置 |
+
+两个后端通过侧边栏一键切换，检索接口完全统一。Supabase 模式下，论文向量存储在云端 PostgreSQL 中，通过 `match_papers` 存储函数执行余弦相似度检索，支持 HNSW 索引加速 Top-K 查询。
+
+```sql
+-- 核心检索函数（Supabase SQL）
+create or replace function match_papers(
+    query_embedding vector(512),
+    match_count int default 4
+) returns table (
+    id uuid, content text, metadata jsonb, similarity float
+) language plpgsql as $$
+begin
+    return query
+    select p.id, p.content, p.metadata,
+           1 - (p.embedding <=> query_embedding) as similarity
+    from papers p
+    order by p.embedding <=> query_embedding
+    limit match_count;
+end;
+$$;
+```
+
+### 3. 混合检索策略
+
+系统采用 **BM25（稀疏）+ 向量（稠密）** 混合检索，权重 0.5:0.5：
+
+- **BM25 检索**：基于 `rank-bm25` 实现，按词频-逆文档频率匹配关键词，擅长精确术语匹配
+- **向量检索**：基于余弦相似度，捕获语义层面的相似性，对同义词和改写问题鲁棒
+- **融合方式**：`EnsembleRetriever` 将两组结果按权重合并，互补各自盲区
+
+### 4. 检索结果优化
+
+- **去重**：`EmbeddingsRedundantFilter` 基于向量相似度剔除重复段落
+- **重排序**：`LongContextReorder` 解决 "Lost in the Middle" 问题——将最相关结果置于上下文窗口的首尾位置，提升 LLM 引用准确率
+
+### 5. 多轮对话记忆
+
+- `RunnableWithMessageHistory` 自动管理对话历史
+- 追问时自动将上下文压缩为独立问题（contextualization），避免检索歧义
+- 基于 `StreamlitChatMessageHistory` 实现会话内持久化
+
+### 6. LLM 模型
+
+| | 详情 |
+|---|---|
+| **模型** | DeepSeek-Chat (`deepseek-chat`) |
+| **调用方式** | OpenAI 兼容 API，通过 `langchain-openai` |
+| **回答格式** | Markdown + LaTeX 公式渲染（`$...$` 行内，`$$...$$` 独立） |
+
+### 7. 文档处理
+
+- **解析**：`pypdf` 提取 PDF 文本，保留页码元数据
+- **分块**：`RecursiveCharacterTextSplitter` 递归切分，chunk_size=1000，overlap=200，保证语义段落完整
+- **延迟加载**：Embedding 模型在首次提问时才初始化，页面秒开，不阻塞启动
+
+---
+
+## 目录结构
+
+```
+streamlit_app.py          # Streamlit 主页面（双后端、延迟加载）
+run_app.py                # PyCharm 本地入口
+src/
+├── config.py             # 多源配置（env > Streamlit Secrets > 默认值）
+├── basic_chain.py        # DeepSeek 模型初始化
+├── local_loader.py       # PDF/TXT 加载、解析
+├── splitter.py           # 递归文档切分
+├── vector_store.py       # Chroma 本地向量库（含 EmbeddingProxy 限速）
+├── supabase_store.py     # Supabase 云端向量库（支持 HTTP 代理）
+├── ensemble.py           # BM25 + 向量混合检索
+├── rag_chain.py          # RAG 核心管道（检索→格式化→生成）
+├── memory.py             # 多轮对话记忆链
+├── full_chain.py         # 完整问答链（System Prompt + 检索 + 记忆）
+└── filter.py             # 检索去重 + 重排序
+```
+
+---
+
+## 快速开始
+
+### 1. 环境配置
 
 ```bash
-python -mvenv .venv
-source .venv/bin/activate
-pip install -U pip
 pip install -r requirements.txt
 ```
 
-If you run into issues related to hnswlib or chroma-hnswlib while installing requirements you may need to install system package for the underlying package.
+### 2. 配置 API Key
 
-For example, on Ubuntu 22.04 this was needed before pip install of hnswlib would succeed.
+创建 `.env` 文件：
 
-```bash
-sudo apt install python3-hnswlib
+```env
+DEEPSEEK_API_KEY=sk-xxxxxxxx
+VECTOR_BACKEND=chroma        # 本地 Chroma，或 supabase 走云端
+HF_ENDPOINT=https://hf-mirror.com  # 国内用户加速 HuggingFace
 ```
 
-### Setup .env file with API tokens needed.
-
-```
-OPENAI_API_KEY="<Put your token here>"
-HUGGINGFACEHUB_API_TOKEN="<Put your token here>"
-```
-
-### Setup Streamlit app secrets.
-
-#### 1. Set up the .streamlit directory and secrets file.
-
-```bash
-mkdir .streamlit
-touch .streamlit/secrets.toml
-chmod 0600 .streamlit/secrets.toml
-```
-
-#### 2. Edit secrets.toml
-
-**Either edit `secrets.toml` in you favorite editor.**
-
-```toml
-OPENAI_API_KEY="<Put your token here>"
-HUGGINGFACEHUB_API_TOKEN="<Put your token here>"
-```
-
-**Or, you can just reuse .env contents from above.**
-
-```bash
-cat < .env >> .streamlit/secrets.toml
-```
-
-### Verify Environment
-
-1. Check that LangChain dependencies are working.
-
-```bash
-python basic_chain.py
-```
-
-2. Check that Streamlit and dependencies are working.
+### 3. 启动
 
 ```bash
 streamlit run streamlit_app.py
+# 或 PyCharm 中直接运行 run_app.py
 ```
 
-3. Run Individual Example Programs
+### 4. 使用 Supabase（可选）
 
-The most of the Python source files besides `streamlit_app.py` have a main defined
-so that you can execute them directly as an example or test.
-
-For example, the main in `ensemble.py` will use context from an online version of the book [*The Problems of Philosophy* by Bertrand Russell](https://www.gutenberg.org/ebooks/5827.html.images)
-to answer "What are the key problems of philosophy according to Russell?"
-
-```bash
-python ensemble.py
+1. 在 [Supabase](https://supabase.com) 创建项目
+2. 在 SQL Editor 中执行建表语句（见上方 SQL）
+3. `.env` 中补充：
+```env
+VECTOR_BACKEND=supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_KEY=sb_secret_xxx
 ```
 
->    Split into 313 chunks
->    According to Russell, the key problems of philosophy include the uncertainty of knowledge, the limitations of metaphysical reasoning, and the inability to provide definite answers to fundamental questions. Philosophy aims to diminish the risk of error, but cannot eliminate it entirely due to human fallibility. The value of philosophy lies in its ability to challenge common sense beliefs and lead to the exploration of complex problems.
+---
 
+## Streamlit Cloud 部署
 
+1. Fork 本仓库
+2. 在 Streamlit Cloud 设置 **Secrets**（Settings → Secrets），填入所有必填配置项
+3. Cloud 自动部署，模型首次加载需下载约 100MB
 
-## Example Queries for Streamlit App
+| 必填 Secrets | 说明 |
+|---|---|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key |
+| `VECTOR_BACKEND` | 设为 `supabase` |
+| `SUPABASE_URL` | Supabase 项目 URL |
+| `SUPABASE_KEY` | Supabase service_role Key |
 
-### Example 1: Metabolic Rate
+---
 
-**Question:**
-If I am an 195 lb male, what should my calorie intake be to lose 1 lb a week based on what you know about my basal metabolic rate?
+## 技术选型与权衡
 
-**Answer:**
-To calculate the calorie intake for a 195 lb male to lose 1 lb per week based on their basal metabolic rate, we can use the estimated BMR values provided in the context.
+| 决策点 | 选择 | 原因 |
+|---|---|---|
+| LLM | DeepSeek vs OpenAI | 中文能力强，API 成本更低 |
+| Embedding | 本地 bge-small-zh vs API | 零调用成本，离线可用，512 维轻量 |
+| 检索 | 混合检索 vs 纯向量 | 关键词 + 语义互补，召回率更高 |
+| 分块 | 1000/200 vs 更大窗口 | 平衡检索精度与上下文完整性 |
+| 向量库双后端 | Chroma + Supabase | 本地开发零配置，生产部署高可用 |
+| 重排序 | LongContextReorder | 解决 LLM 长上下文中段信息忽略问题 |
+| 模型加载 | 延迟加载 vs 启动加载 | 页面秒开，首次加载有明确进度提示 |
 
-For a 190 lb male, the estimated BMR is around 2,280 calories per day. To lose 1 lb per week, a general rule of thumb is to create a calorie deficit of about 500 calories per day.
-
-Therefore, to lose 1 lb per week, a 195 lb male should aim to consume around 1,780 calories per day (2,280 calories - 500 calories). This calorie intake, combined with regular physical activity, can help achieve a sustainable weight loss goal.
-
-### Example 2: Recipes
-
-NOTE: to use this example, copy the `example/us_army_recipes.txt` file into the `data` directory. It is left out by default because it significantly increases the resources used over the other examples.
-
-**Question:**
-How do I make salmon croquettes according to the recipes I provided you?
-
-**Answer:**
-To make salmon croquettes based on the recipes shared, you can follow these steps:
-
-Ingredients:
-
-- 4 cans of salmon
-- 4 pounds of cold boiled potatoes
-- 2 eggs
-- Salt and pepper to taste
-- Cracker dust for coating
-- Oil for frying
-
-Instructions:
-
-1. Drain the canned salmon and remove any bones or skin.
-2. In a large bowl, mash the salmon and boiled potatoes together.
-3. Add the eggs, salt, and pepper to the mixture and combine well.
-4. Shape the mixture into small cakes about 2 inches in diameter.
-5. In a separate bowl, beat the remaining eggs with a little milk to create an egg batter.
-6. Dip each salmon cake into the egg batter, then coat it with cracker dust.
-7. Heat oil in a pan for frying.
-8. Fry the salmon croquettes in the hot oil until they are golden brown on all sides.
-9. Once cooked, remove them from the oil and place them on a paper towel to drain any excess oil.
-10. Serve the salmon croquettes hot and enjoy!
-
-I hope these instructions help you make delicious salmon croquettes! Let me know if you need any more assistance.
-
-
-## Example Data Used
-
-* The file `examples/nutrients_csvfile.csv` is from the Kaggle Dataset [Nutritional Facts for most common foods](https://www.kaggle.com/datasets/niharika41298/nutrition-details-for-most-common-foods/)
-shared under the [CC0: Public Domain](https://creativecommons.org/publicdomain/zero/1.0/) license.
-* The file `examples/us_army_recipes.txt` is in the public domain, and was retrieved from Project Gutenberg at [Recipes Used in the Cooking Schools, U. S. Army by United States. Army](https://www.gutenberg.org/ebooks/65250).
-* The file `examples/healthy_meal_10_tips.pdf` was published by thes USDA, Center for Nutrition Policy and Promotion and was retrieved from Wikimedia  Commons, and is in the public domain.
-[See page for author, Public domain, via Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Build_a_healthy_meal_10_tips_for_healthy_meals_(IA_CAT31299650).pdf).
-* The file `examples/mal_boole.pdf` is in the public domain. Boole, G. (1847, January 1). The Mathematical Analysis of Logic. Retrieved from Project Gutenberg at https://www.gutenberg.org/ebooks/36884.
-* The file `examples/grocery.md` is just a grocery list.
+---
 
 ## References
 
-
-Gordon V. Cormack, Charles L A Clarke, and Stefan Buettcher. 2009. [Reciprocal rank fusion outperforms condorcet and individual rank learning methods](https://dl.acm.org/doi/10.1145/1571941.1572114). In Proceedings of the 32nd international ACM SIGIR conference on Research and development in information retrieval (SIGIR '09). Association for Computing Machinery, New York, NY, USA, 758–759. <https://doi.org/10.1145/1571941.1572114>.
-
-Jiang, A. Q., Sablayrolles, A., Mensch, A., Bamford, C., Singh Chaplot, D., de las Casas, D., … & El Sayed, W. (2023). [Mistral 7B](https://arxiv.org/abs/2310.06825). arXiv e-prints, arXiv-2310. <https://doi.org/10.48550/arXiv.2310.06825>.
-
-Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., … & Kiela, D. (2020). [Retrieval-augmented generation for knowledge-intensive nlp tasks](https://arxiv.org/abs/2005.11401). Advances in Neural Information Processing Systems, 33, 9459–9474.
-
-Liu, N. F., Lin, K., Hewitt, J., Paranjape, A., Bevilacqua, M., Petroni, F., & Liang, P. (2024). [Lost in the middle: How language models use long contexts](https://arxiv.org/abs/2307.03172). Transactions of the Association for Computational Linguistics, 12, 157–173.
-
-Robertson, S., & Zaragoza, H. (2009). [The probabilistic relevance framework: BM25 and beyond](https://dl.acm.org/doi/10.1561/1500000019). Foundations and Trends® in Information Retrieval, 3(4), 333–389. <https://doi.org/10.1561/1500000019>
-
-Thibault Formal, Benjamin Piwowarski, and Stéphane Clinchant. 2021. [SPLADE: Sparse Lexical and Expansion Model for First Stage Ranking](https://dl.acm.org/doi/10.1145/3404835.3463098). In Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '21). Association for Computing Machinery, New York, NY, USA, 2288–2292. <https://doi.org/10.1145/3404835.3463098>.
-
-Tunstall, L., Beeching, E., Lambert, N., Rajani, N., Rasul, K., Belkada, Y., … & Wolf, T. (2023). Zephyr: Direct Distillation of LM Alignment. arXiv e-prints, arXiv-2310. <https://doi.org/10.48550/arXiv.2310.16944>.
-
-## Misc Notes
-
-- There is an issue with newer langchain package versions and streamlit chat history, see https://github.com/langchain-ai/langchain/pull/18834
-  - This one reason why a number of dependencies are pinned to specific values.
+- Lewis, P., et al. (2020). [Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks](https://arxiv.org/abs/2005.11401). NeurIPS.
+- Robertson, S., & Zaragoza, H. (2009). [The Probabilistic Relevance Framework: BM25 and Beyond](https://dl.acm.org/doi/10.1561/1500000019). Foundations and Trends in IR.
+- Liu, N. F., et al. (2024). [Lost in the Middle: How Language Models Use Long Contexts](https://arxiv.org/abs/2307.03172). TACL.
+- BGE Embedding: [BAAI/bge-small-zh-v1.5](https://huggingface.co/BAAI/bge-small-zh-v1.5)
+- DeepSeek API: [platform.deepseek.com](https://platform.deepseek.com)
