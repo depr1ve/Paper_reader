@@ -1,16 +1,19 @@
 import os
+import sys
+
 import streamlit as st
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
 from src.config import (
-    EMBEDDING_MODEL, VECTOR_BACKEND,
+    EMBEDDING_MODEL, VECTOR_BACKEND, HF_ENDPOINT,
     DEEPSEEK_API_KEY as ENV_DEEPSEEK_KEY,
 )
-from src.ensemble import ensemble_retriever_from_docs
-from src.full_chain import create_full_chain, ask_question
-from src.local_loader import load_documents, get_document_text
+
+# ---- HuggingFace 镜像（国内加速，解决下载卡住问题） ----
+if HF_ENDPOINT:
+    os.environ["HF_ENDPOINT"] = HF_ENDPOINT
 
 st.set_page_config(page_title="RAG Paper Reader", page_icon="📄")
 st.title("📄 RAG Paper Reader - 论文问答")
@@ -79,6 +82,8 @@ def get_embeddings():
 # ---- 检索器 ----
 @st.cache_resource
 def get_local_retriever():
+    from src.local_loader import load_documents
+    from src.ensemble import ensemble_retriever_from_docs
     docs = load_documents()
     embeddings = get_embeddings()
     return ensemble_retriever_from_docs(docs, embeddings=embeddings)
@@ -95,6 +100,7 @@ def get_supabase_retriever(_url, _key):
 if uploaded_file is not None:
     with st.spinner(f"正在处理 {uploaded_file.name} ..."):
         try:
+            from src.local_loader import get_document_text
             docs = get_document_text(uploaded_file)
             if not docs:
                 st.error("无法提取文档内容，请检查文件是否损坏。")
@@ -118,48 +124,59 @@ if uploaded_file is not None:
             st.error(f"上传失败: {e}")
 
 
-# ---- 构建对话链 ----
+# ---- 构建对话链（延迟加载，首次提问时才初始化模型） ----
 @st.cache_resource
-def build_chain(backend_choice):
+def build_chain(backend_choice, _supabase_url, _supabase_key):
     if backend_choice == "supabase":
-        url = os.getenv("SUPABASE_URL", "")
-        key = os.getenv("SUPABASE_KEY", "")
-        if not url or not key:
+        if not _supabase_url or not _supabase_key:
             return None
-        retriever = get_supabase_retriever(url, key)
+        retriever = get_supabase_retriever(_supabase_url, _supabase_key)
     else:
         retriever = get_local_retriever()
 
+    from src.full_chain import create_full_chain
     return create_full_chain(
         retriever,
         chat_memory=StreamlitChatMessageHistory(key="langchain_messages"),
     )
 
 
+# ---- 初始化 session state ----
+if "chain_ready" not in st.session_state:
+    st.session_state.chain_ready = False
+    st.session_state.chain = None
+    st.session_state.current_backend = None
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# 切换后端时重建 chain
+if st.session_state.current_backend != backend:
+    st.session_state.chain_ready = False
+    st.session_state.chain = None
+    st.session_state.current_backend = backend
+
+
 # ---- 聊天界面 ----
-def show_ui(qa, prompt_to_user="请输入你的问题..."):
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": prompt_to_user}]
+def ensure_chain():
+    """确保 chain 已初始化，未初始化时显示加载提示。返回 (chain, ok)"""
+    if st.session_state.chain_ready:
+        return st.session_state.chain, True
 
-    # 显示聊天记录
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_KEY", "")
 
-    # 接收用户输入
-    if prompt := st.chat_input("在此输入问题..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    if backend == "supabase" and (not url or not key):
+        return None, False
 
-        with st.chat_message("assistant"):
-            with st.spinner("🤔 思考中..."):
-                try:
-                    response = ask_question(qa, prompt)
-                    st.markdown(response.content)
-                    st.session_state.messages.append({"role": "assistant", "content": response.content})
-                except Exception as e:
-                    st.error(f"出错了: {e}")
+    with st.spinner("⏳ 正在加载 Embedding 模型（首次运行需下载约 100MB，请耐心等待）..."):
+        try:
+            chain = build_chain(backend, url, key)
+            st.session_state.chain = chain
+            st.session_state.chain_ready = True
+            return chain, True
+        except Exception as e:
+            st.error(f"模型加载失败: {e}")
+            return None, False
 
 
 # ---- 主流程 ----
@@ -167,10 +184,43 @@ if not deepseek_key:
     st.info("👈 请在侧边栏输入 DeepSeek API Key")
     st.stop()
 
-chain = build_chain(backend)
-if chain is None:
-    if backend == "supabase":
+# 预检查 supabase 配置
+if backend == "supabase":
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_KEY", "")
+    if not url or not key:
         st.error("👈 请在侧边栏填写 Supabase URL 和 Key")
-    st.stop()
+        st.stop()
 
-show_ui(chain)
+# 显示聊天记录
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+if not st.session_state.messages:
+    with st.chat_message("assistant"):
+        st.markdown("请输入你的问题...")
+
+# 接收用户输入
+if prompt := st.chat_input("在此输入问题..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    chain, ok = ensure_chain()
+    if not ok:
+        st.error("请先在侧边栏完成配置")
+    elif chain is None:
+        st.error("对话链初始化失败")
+    else:
+        with st.chat_message("assistant"):
+            with st.spinner("🤔 思考中..."):
+                try:
+                    from src.full_chain import ask_question
+                    response = ask_question(chain, prompt)
+                    st.markdown(response.content)
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": response.content}
+                    )
+                except Exception as e:
+                    st.error(f"出错了: {e}")

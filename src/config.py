@@ -32,6 +32,9 @@ DEEPSEEK_API_KEY = _get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = _get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = _get("DEEPSEEK_MODEL", "deepseek-chat")
 
+# HuggingFace 镜像（国内用户设为 https://hf-mirror.com 加速下载）
+HF_ENDPOINT = _get("HF_ENDPOINT", "")
+
 # Embedding 模型（本地下载）
 EMBEDDING_MODEL = _get("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
 
