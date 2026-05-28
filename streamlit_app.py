@@ -1,0 +1,176 @@
+import os
+import streamlit as st
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.documents import Document
+
+from config import (
+    EMBEDDING_MODEL, VECTOR_BACKEND,
+    DEEPSEEK_API_KEY as ENV_DEEPSEEK_KEY,
+)
+from ensemble import ensemble_retriever_from_docs
+from full_chain import create_full_chain, ask_question
+from local_loader import load_documents, get_document_text
+
+st.set_page_config(page_title="RAG Paper Reader", page_icon="📄")
+st.title("📄 RAG Paper Reader - 论文问答")
+st.caption("上传论文 PDF，基于 RAG 进行智能问答 | 支持 LaTeX 公式渲染")
+
+
+# ---- 侧边栏 ----
+with st.sidebar:
+    st.subheader("🔑 API 配置")
+    deepseek_key = st.text_input(
+        "DeepSeek API Key",
+        value=ENV_DEEPSEEK_KEY if ENV_DEEPSEEK_KEY else "",
+        type="password",
+        placeholder="sk-...",
+    )
+    if deepseek_key:
+        os.environ["DEEPSEEK_API_KEY"] = deepseek_key
+
+    st.divider()
+    st.subheader("🗄️ 向量库后端")
+    backend = st.radio(
+        "选择后端",
+        options=["chroma", "supabase"],
+        format_func=lambda x: "💻 本地 Chroma" if x == "chroma" else "☁️ Supabase 云端",
+        index=0 if VECTOR_BACKEND == "chroma" else 1,
+        help="本地：向量存在磁盘。云端：向量存在 Supabase，永久保存，多地共享。",
+    )
+
+    if backend == "supabase":
+        supabase_url = st.text_input(
+            "Supabase URL",
+            value=os.getenv("SUPABASE_URL", ""),
+            placeholder="https://xxx.supabase.co",
+        )
+        supabase_key_input = st.text_input(
+            "Supabase Key",
+            value=os.getenv("SUPABASE_KEY", ""),
+            type="password",
+            placeholder="sb_secret_...",
+            help="需 service_role key 才能写入向量",
+        )
+        if supabase_url:
+            os.environ["SUPABASE_URL"] = supabase_url
+        if supabase_key_input:
+            os.environ["SUPABASE_KEY"] = supabase_key_input
+
+    st.divider()
+    st.subheader("📤 上传论文")
+    uploaded_file = st.file_uploader(
+        "支持 PDF / TXT 格式",
+        type=["pdf", "txt"],
+        accept_multiple_files=False,
+    )
+
+    if st.button("🗑️ 清空聊天记录"):
+        st.session_state.messages = []
+        st.rerun()
+
+
+# ---- 加载 Embedding 模型 ----
+@st.cache_resource
+def get_embeddings():
+    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+
+# ---- 检索器 ----
+@st.cache_resource
+def get_local_retriever():
+    docs = load_documents()
+    embeddings = get_embeddings()
+    return ensemble_retriever_from_docs(docs, embeddings=embeddings)
+
+
+@st.cache_resource
+def get_supabase_retriever(_url, _key):
+    from supabase_store import get_supabase_retriever as sup_ret
+    embeddings = get_embeddings()
+    return sup_ret(embeddings)
+
+
+# ---- 处理上传 ----
+if uploaded_file is not None:
+    with st.spinner(f"正在处理 {uploaded_file.name} ..."):
+        try:
+            docs = get_document_text(uploaded_file)
+            if not docs:
+                st.error("无法提取文档内容，请检查文件是否损坏。")
+            else:
+                embeddings = get_embeddings()
+
+                if backend == "supabase":
+                    from supabase_store import add_documents_to_supabase
+                    n_chunks = add_documents_to_supabase(docs, embeddings)
+                    st.success(f"✅ 已上传至 Supabase 云端: {uploaded_file.name}")
+                    get_supabase_retriever.clear()
+                else:
+                    from splitter import split_documents
+                    from vector_store import create_vector_db
+                    from config import CHROMA_COLLECTION
+                    texts = split_documents(docs)
+                    create_vector_db(texts, embeddings, collection_name=CHROMA_COLLECTION)
+                    st.success(f"✅ 已添加至本地向量库: {uploaded_file.name}（{len(texts)} chunks）")
+                    get_local_retriever.clear()
+        except Exception as e:
+            st.error(f"上传失败: {e}")
+
+
+# ---- 构建对话链 ----
+@st.cache_resource
+def build_chain(backend_choice):
+    if backend_choice == "supabase":
+        url = os.getenv("SUPABASE_URL", "")
+        key = os.getenv("SUPABASE_KEY", "")
+        if not url or not key:
+            return None
+        retriever = get_supabase_retriever(url, key)
+    else:
+        retriever = get_local_retriever()
+
+    return create_full_chain(
+        retriever,
+        chat_memory=StreamlitChatMessageHistory(key="langchain_messages"),
+    )
+
+
+# ---- 聊天界面 ----
+def show_ui(qa, prompt_to_user="请输入你的问题..."):
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": prompt_to_user}]
+
+    # 显示聊天记录
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # 接收用户输入
+    if prompt := st.chat_input("在此输入问题..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("🤔 思考中..."):
+                try:
+                    response = ask_question(qa, prompt)
+                    st.markdown(response.content)
+                    st.session_state.messages.append({"role": "assistant", "content": response.content})
+                except Exception as e:
+                    st.error(f"出错了: {e}")
+
+
+# ---- 主流程 ----
+if not deepseek_key:
+    st.info("👈 请在侧边栏输入 DeepSeek API Key")
+    st.stop()
+
+chain = build_chain(backend)
+if chain is None:
+    if backend == "supabase":
+        st.error("👈 请在侧边栏填写 Supabase URL 和 Key")
+    st.stop()
+
+show_ui(chain)

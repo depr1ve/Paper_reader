@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(conda env *)",
+      "Bash(ls -d /e/conda* /e/anaconda* /e/miniconda* /e/envs*)",
+      "Bash(find /e -maxdepth 3 -name \"conda.exe\" -o -name \"python.exe\")",
+      "Bash(/e/Anaconda/Scripts/conda env *)",
+      "Bash(/e/Anaconda/python.exe --version)",
+      "Bash(/e/Anaconda/Scripts/pip.exe --version)",
+      "Bash(/e/Anaconda/envs/pytorch_working/python.exe --version)",
+      "Bash(/e/Anaconda/envs/pytorch_working/Scripts/pip.exe --version)",
+      "Bash(/e/Anaconda/Scripts/pip.exe list *)",
+      "Bash(/e/Anaconda/Scripts/pip.exe install *)",
+      "Bash(/e/Anaconda/python.exe -c \"from langchain.retrievers import EnsembleRetriever\")",
+      "Bash(/e/Anaconda/python.exe -c \"from langchain_community.retrievers import BM25Retriever\")",
+      "Bash(/e/Anaconda/python.exe -c \"from langchain_classic.retrievers import EnsembleRetriever; print\\('OK'\\)\")",
+      "Bash(/e/Anaconda/python.exe -c \"from langchain_classic.retrievers import ContextualCompressionRetriever; print\\('OK'\\)\")",
+      "Bash(/e/Anaconda/python.exe -c \"from langchain_classic.retrievers import MergerRetriever; print\\('OK'\\)\")",
+      "Bash(/e/Anaconda/python.exe *)",
+      "Bash(timeout 8 /e/Anaconda/Scripts/streamlit.exe run streamlit_app.py --server.port=8501)",
+      "Bash(PYTHONIOENCODING=utf-8 /e/Anaconda/python.exe -c ' *)",
+      "Bash(rm -rf \"E:\\\\Claude code\\\\Paper\\\\store\")",
+      "Bash(PYTHONIOENCODING=utf-8 cd \"E:\\\\Claude code\\\\Paper\")",
+      "Bash(export PYTHONIOENCODING=utf-8)",
+      "Bash(rm -rf store/papers_v2)",
+      "Bash(mkdir -p data_bak)",
+      "Bash(mv data/*.txt data_bak/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --connect-timeout 10 \"https://bzjmpawhfpthfdsptsw.supabase.co\")",
+      "Bash(env)",
+      "Read(//c/Users/28345/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/**)",
+      "Read(//c/Users/28345/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/snapshots/**)",
+      "Bash(export HF_HUB_OFFLINE=1)",
+      "Bash(curl *)",
+      "Bash(nslookup bzjmpawhfpthfdsptsw.supabase.co)",
+      "Bash(timeout 8 /e/Anaconda/Scripts/streamlit.exe run streamlit_app.py --server.port=8502)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git config *)"
+    ]
+  }
+}
