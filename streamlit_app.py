@@ -9,6 +9,7 @@ from langchain_core.documents import Document
 from src.config import (
     EMBEDDING_MODEL, VECTOR_BACKEND, HF_ENDPOINT,
     DEEPSEEK_API_KEY as ENV_DEEPSEEK_KEY,
+    SUPABASE_URL, SUPABASE_KEY,
 )
 
 # ---- HuggingFace 镜像（国内加速，解决下载卡住问题） ----
@@ -47,19 +48,19 @@ with st.sidebar:
     )
 
     if backend == "supabase":
-        has_url = bool(os.getenv("SUPABASE_URL"))
-        has_key = bool(os.getenv("SUPABASE_KEY"))
+        has_url = bool(SUPABASE_URL)
+        has_key = bool(SUPABASE_KEY)
         if has_url and has_key:
             st.success("✅ Supabase 已配置（从 Secrets）")
         else:
             supabase_url = st.text_input(
                 "Supabase URL",
-                value=os.getenv("SUPABASE_URL", ""),
+                value=SUPABASE_URL,
                 placeholder="https://xxx.supabase.co",
             )
             supabase_key_input = st.text_input(
                 "Supabase Key",
-                value=os.getenv("SUPABASE_KEY", ""),
+                value=SUPABASE_KEY,
                 type="password",
                 placeholder="sb_secret_...",
                 help="需 service_role key 才能写入向量",
@@ -171,8 +172,8 @@ def ensure_chain():
     if st.session_state.chain_ready:
         return st.session_state.chain, True
 
-    url = os.getenv("SUPABASE_URL", "")
-    key = os.getenv("SUPABASE_KEY", "")
+    url = SUPABASE_URL
+    key = SUPABASE_KEY
 
     if backend == "supabase" and (not url or not key):
         return None, False
@@ -195,8 +196,8 @@ if not deepseek_key:
 
 # 预检查 supabase 配置
 if backend == "supabase":
-    url = os.getenv("SUPABASE_URL", "")
-    key = os.getenv("SUPABASE_KEY", "")
+    url = SUPABASE_URL
+    key = SUPABASE_KEY
     if not url or not key:
         st.error("👈 请在侧边栏填写 Supabase URL 和 Key")
         st.stop()

@@ -5,16 +5,16 @@ load_dotenv()
 
 
 def _get(key, default=""):
-    """1.环境变量(.env/sidebar) 2.Streamlit Cloud secrets 3.默认值"""
-    val = os.getenv(key)
-    if val:
-        return val
+    """1.Streamlit secrets (secrets.toml / Cloud) 2.环境变量(.env/sidebar) 3.默认值"""
     try:
         import streamlit as st
         if st.secrets and key in st.secrets:
             return st.secrets[key]
     except Exception:
         pass
+    val = os.getenv(key)
+    if val:
+        return val
     return default
 
 
