@@ -108,7 +108,7 @@ $$;
 系统采用 **关键词（稀疏）+ 向量（稠密）** 混合检索，权重 0.5:0.5：
 
 - **本地 Chroma**：基于 `rank-bm25` 实现 BM25 + 向量，`EnsembleRetriever` 融合
-- **Supabase**：基于 `pg_trgm.similarity()` 实现关键词 + `pgvector` 向量余弦相似度，`hybrid_match_papers` SQL 函数内融合
+- **Supabase**：基于 `pg_trgm` 扩展的 `similarity()` 实现关键词 + `pgvector` 向量余弦相似度，`hybrid_match_papers` SQL 函数内融合
 - **融合方式**：两组分数按 0.5:0.5 加权求和，互补各自盲区
 
 ### 4. 检索结果优化
