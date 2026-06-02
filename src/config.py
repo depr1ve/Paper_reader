@@ -43,6 +43,7 @@ SUPABASE_URL = _get("SUPABASE_URL", "")
 SUPABASE_KEY = _get("SUPABASE_KEY", "")
 SUPABASE_TABLE = _get("SUPABASE_TABLE", "papers")
 SUPABASE_QUERY_NAME = _get("SUPABASE_QUERY_NAME", "match_papers")
+SUPABASE_HYBRID_QUERY_NAME = _get("SUPABASE_HYBRID_QUERY_NAME", "hybrid_match_papers")
 SUPABASE_PROXY = _get("SUPABASE_PROXY", "")
 
 # 向量库后端: "chroma" (本地) 或 "supabase" (云端)

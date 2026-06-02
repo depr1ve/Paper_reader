@@ -63,7 +63,7 @@
 两个后端通过侧边栏一键切换，检索接口完全统一。Supabase 模式下，论文向量存储在云端 PostgreSQL 中，通过 `match_papers` 存储函数执行余弦相似度检索，支持 HNSW 索引加速 Top-K 查询。
 
 ```sql
--- 核心检索函数（Supabase SQL）
+-- 基础向量检索函数（写入路径使用）
 create or replace function match_papers(
     query_embedding vector(512),
     match_count int default 4
@@ -79,15 +79,37 @@ begin
     limit match_count;
 end;
 $$;
+
+-- 混合检索函数（读取路径使用，需先启用 pg_trgm 扩展）
+create extension if not exists pg_trgm;
+
+create or replace function hybrid_match_papers(
+    query_embedding vector(512),
+    query_text text,
+    match_count int default 4
+) returns table (
+    id uuid, content text, metadata jsonb, similarity float
+) language plpgsql as $$
+begin
+    return query
+    select p.id, p.content, p.metadata,
+           (0.5 * (1 - (p.embedding <=> query_embedding))
+            + 0.5 * coalesce(similarity(p.content, query_text), 0)) as similarity
+    from papers p
+    where p.embedding is not null and p.content is not null
+    order by similarity desc
+    limit match_count;
+end;
+$$;
 ```
 
 ### 3. 混合检索策略
 
-系统采用 **BM25（稀疏）+ 向量（稠密）** 混合检索，权重 0.5:0.5：
+系统采用 **关键词（稀疏）+ 向量（稠密）** 混合检索，权重 0.5:0.5：
 
-- **BM25 检索**：基于 `rank-bm25` 实现，按词频-逆文档频率匹配关键词，擅长精确术语匹配
-- **向量检索**：基于余弦相似度，捕获语义层面的相似性，对同义词和改写问题鲁棒
-- **融合方式**：`EnsembleRetriever` 将两组结果按权重合并，互补各自盲区
+- **本地 Chroma**：基于 `rank-bm25` 实现 BM25 + 向量，`EnsembleRetriever` 融合
+- **Supabase**：基于 `pg_trgm.similarity()` 实现关键词 + `pgvector` 向量余弦相似度，`hybrid_match_papers` SQL 函数内融合
+- **融合方式**：两组分数按 0.5:0.5 加权求和，互补各自盲区
 
 ### 4. 检索结果优化
 

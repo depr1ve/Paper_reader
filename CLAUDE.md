@@ -12,7 +12,7 @@
 | Embedding | **BAAI/bge-small-zh-v1.5**（本地运行，维度 512，中文优化） |
 | 向量库（本地） | Chroma，持久化到 `store/` |
 | 向量库（云端） | **Supabase pgvector**（表 `papers`，函数 `match_papers`） |
-| 检索策略 | BM25（关键词）+ 向量（语义）混合检索，权重 0.5:0.5 |
+| 检索策略 | 关键词+向量混合检索，权重 0.5:0.5（Chroma: BM25, Supabase: pg_trgm） |
 | 分块 | `RecursiveCharacterTextSplitter`，chunk_size=1000，overlap=200 |
 | 对话记忆 | `RunnableWithMessageHistory`，自动将追问改写为独立问题 |
 | UI | Streamlit，Markdown + LaTeX 公式渲染 |
@@ -48,7 +48,6 @@ src/
 - 必须用 Cloud Secrets 配置（`secrets.toml` 不会推送到 GitHub）
 - 必须用 `VECTOR_BACKEND=supabase`（Cloud 磁盘不持久化）
 - Cloud 使用 Python 3.14，`requirements.txt` 不锁版本号以保持兼容
-- 当 API Key / Supabase 已从 Secrets 配置时，侧边栏自动隐藏敏感信息
 
 ## 配置项
 
@@ -64,44 +63,6 @@ src/
 | `SUPABASE_KEY` | Supabase service_role key | 仅 supabase 模式 |
 | `SUPABASE_PROXY` | Supabase 代理地址 | 否（国内访问需要） |
 | `CHROMA_COLLECTION` | Chroma 集合名 | 否（默认 papers） |
-
-## Supabase 表结构
-
-```sql
-create extension if not exists vector;
-
-create table if not exists papers (
-    id uuid primary key default gen_random_uuid(),
-    content text,
-    metadata jsonb,
-    embedding vector(512)
-);
-
-create or replace function match_papers(
-    query_embedding vector(512),
-    match_count int default 4
-)
-returns table (
-    id uuid,
-    content text,
-    metadata jsonb,
-    similarity float
-)
-language plpgsql
-as $$
-begin
-    return query
-    select
-        p.id,
-        p.content,
-        p.metadata,
-        1 - (p.embedding <=> query_embedding) as similarity
-    from papers p
-    order by p.embedding <=> query_embedding
-    limit match_count;
-end;
-$$;
-```
 
 ## 关键依赖
 
@@ -120,7 +81,7 @@ pypdf, rank-bm25, rich, python-dotenv
 
 - `.streamlit/` 和 `.env` 在 `.gitignore` 中，不会提交到 GitHub
 - Embedding 模型首次运行从 HuggingFace 下载（约 100MB），国内需配置 `HF_ENDPOINT` 镜像
-- Streamlit Cloud 部署前确保已建好 Supabase 表和 `match_papers` 函数
+- Streamlit Cloud 部署前确保已建好 Supabase 表和 `match_papers`、`hybrid_match_papers` 函数，并启用 `pg_trgm` 扩展
 - 本地 Chroma 模式：论文 PDF 放在 `data/` 目录，启动后上传或自动加载
 - Supabase 从国内访问可能需要代理，配置 `SUPABASE_PROXY`
-- `__pycache__/` 目录已 gitignore，可随时删除
+
