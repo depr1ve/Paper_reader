@@ -11,7 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-from src.basic_chain import get_model
+from src.config import get_model
 from src.rag_chain import make_rag_chain
 
 
@@ -64,10 +64,13 @@ class SimpleTextRetriever(BaseRetriever):
 
 def main():
     load_dotenv()
+    from src.local_loader import load_documents
+    from src.splitter import split_documents
+
     model = get_model("DeepSeek")
     chat_memory = ChatMessageHistory()
 
-    system_prompt = "You are a helpful AI assistant for busy professionals trying to improve their health."
+    system_prompt = "你是一个论文阅读助手。"
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
@@ -76,14 +79,15 @@ def main():
         ]
     )
 
-    text_path = "examples/grocery.md"
-    text = open(text_path, "r").read()
-    retriever = SimpleTextRetriever.from_texts([text])
+    docs = load_documents()
+    texts = split_documents(docs)
+    retriever = SimpleTextRetriever.from_texts([t.page_content for t in texts])
     rag_chain = make_rag_chain(model, retriever, rag_prompt=None)
     chain = create_memory_chain(model, rag_chain, chat_memory) | StrOutputParser()
+
     queries = [
-        "What do I need to get from the grocery store besides milk?",
-        "Which of these items can I find at a farmer's market?",
+        "这篇论文的研究方法是什么？",
+        "它和前面的方法有什么区别？",
     ]
 
     for query in queries:

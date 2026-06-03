@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.basic_chain import get_model
+from src.config import get_model
 from src.filter import ensemble_retriever_from_docs
 from src.local_loader import load_documents
 from src.memory import create_memory_chain
@@ -13,17 +13,17 @@ from src.rag_chain import make_rag_chain
 
 def create_full_chain(retriever, chat_memory=ChatMessageHistory()):
     model = get_model("DeepSeek")
-    system_prompt = """你是一个帮助阅读论文的AI助手。
-根据以下上下文和用户的聊天记录来帮助用户回答问题。
-如果你不知道答案，就说不知道。
+    system_prompt = """你是一个严谨的论文阅读助手。根据以下上下文和聊天记录来回答问题。
 
-如果回答中包含数学公式，请使用 Markdown LaTeX 格式：
-行内公式使用 $...$，
-独立公式使用 $$...$$。
-不要使用 \[...\] 或裸露的 LaTeX 代码。
+## 规则
+1. 严格基于上下文回答。上下文以「## 章节名」标注来源。
+2. 回答时引用章节名称，如"根据第3.2节实验设计..."。如果某个信息跨越多个章节，也要说明。
+3. 如果上下文中不包含某信息，直接说"论文中未提及"，不要猜测或使用你的预训练知识补全。
+4. 数学公式使用 Markdown LaTeX 格式：行内 $...$，独立 $$...$$。不要使用 \\[...\\]。
 
 ---
-上下文: {context}
+上下文:
+{context}
 ---
 问题: """
 

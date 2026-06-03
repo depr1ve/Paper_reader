@@ -14,6 +14,7 @@
 | 向量库（云端） | **Supabase pgvector**（表 `papers`，函数 `match_papers`） |
 | 检索策略 | 关键词+向量混合检索，权重 0.5:0.5（Chroma: BM25, Supabase: pg_trgm） |
 | 分块 | `RecursiveCharacterTextSplitter`，chunk_size=1000，overlap=200 |
+| 元数据 | L1：文档名、页码、章节标题、章节类型、chunk 位置索引 |
 | 对话记忆 | `RunnableWithMessageHistory`，自动将追问改写为独立问题 |
 | UI | Streamlit，Markdown + LaTeX 公式渲染 |
 
@@ -23,17 +24,42 @@
 streamlit_app.py          # Streamlit 主页面
 run_app.py                # PyCharm 本地入口
 src/
-├── config.py             # 配置（优先 env，其次 Streamlit secrets）
-├── basic_chain.py        # LLM 模型初始化（DeepSeek）
-├── local_loader.py       # 加载 data/ 下的 PDF/TXT
-├── splitter.py           # 文档切分
+├── config.py             # 配置 + LLM 工厂（get_model）
+├── local_loader.py       # 加载 data/ 下的 PDF/TXT（注入文档级 metadata）
+├── splitter.py           # 文档切分 + 章节检测 + L1 metadata 注入
 ├── vector_store.py       # Chroma 本地向量库
 ├── supabase_store.py     # Supabase 云端向量库（支持代理）
 ├── ensemble.py           # BM25 + 向量混合检索
-├── rag_chain.py          # RAG 核心链
+├── rag_chain.py          # RAG 核心链 + format_docs（拼接 metadata 上下文标签）
 ├── memory.py             # 多轮对话记忆
 ├── full_chain.py         # 完整问答链（含 system prompt）
 └── filter.py             # 检索结果去重+重排序
+```
+
+## Metadata（L1 结构化标注）
+
+切分阶段自动为每个 chunk 注入 6 个元数据字段：
+
+| 字段 | 来源 | 说明 |
+|------|------|------|
+| `source` | local_loader | 论文文件名 |
+| `paper_title` | local_loader | 论文标题（优先 PDF 元数据，回退文件名） |
+| `section_title` | splitter | 章节标题（正则匹配，扫描前 5 行） |
+| `section_type` | splitter | 章节分类（abstract/introduction/methods/experiments/discussion/conclusion/appendix/body） |
+| `chunk_index` | splitter | chunk 在全文中的序号 |
+| `total_chunks` | splitter | 全文 chunk 总数 |
+
+`format_docs()` 以章节标题标注上下文，同一章节的多个 chunk 合并避免重复标签：
+```
+## 《论文名》· 3 实验设计
+
+chunk1 正文...
+
+chunk2 正文...
+
+## 《论文名》· 5 实验结果与分析
+
+chunk3 正文...
 ```
 
 ## 配置方式

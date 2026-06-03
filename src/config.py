@@ -48,3 +48,14 @@ SUPABASE_PROXY = _get("SUPABASE_PROXY", "")
 
 # 向量库后端: "chroma" (本地) 或 "supabase" (云端)
 VECTOR_BACKEND = _get("VECTOR_BACKEND", "supabase")
+
+
+def get_model(repo_id="DeepSeek", **kwargs):
+    """创建 LLM 实例。DeepSeek 兼容 OpenAI 协议，使用 ChatOpenAI 调用。"""
+    from langchain_openai import ChatOpenAI
+
+    if repo_id == "DeepSeek":
+        kwargs.setdefault("base_url", DEEPSEEK_BASE_URL)
+        kwargs.setdefault("api_key", DEEPSEEK_API_KEY)
+        kwargs.setdefault("model", DEEPSEEK_MODEL)
+    return ChatOpenAI(temperature=0, **kwargs)

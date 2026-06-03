@@ -6,8 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.messages.base import BaseMessage
 
-from src.basic_chain import basic_chain, get_model
-from src.remote_loader import get_wiki_docs
+from src.config import get_model
 from src.splitter import split_documents
 from src.vector_store import create_vector_db
 
@@ -18,7 +17,23 @@ def find_similar(vs, query):
 
 
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    """将检索到的文档拼接为 LLM 上下文，以章节标签标注来源。"""
+    parts = []
+    prev_section = None
+    for doc in docs:
+        meta = doc.metadata
+        section = meta.get('section_title') or '正文'
+        paper = meta.get('paper_title', '')
+
+        # 同一章节的多个 chunk 合并，避免重复标注
+        if section == prev_section:
+            parts.append(doc.page_content)
+        else:
+            label = f"《{paper}》· {section}" if paper else section
+            parts.append(f"## {label}\n\n{doc.page_content}")
+            prev_section = section
+
+    return "\n\n".join(parts)
 
 
 def get_question(input):
@@ -53,8 +68,10 @@ def make_rag_chain(model, retriever, rag_prompt = None):
 
 def main():
     load_dotenv()
+    from src.local_loader import load_documents
+
     model = get_model("DeepSeek")
-    docs = get_wiki_docs(query="Bertrand Russell", load_max_docs=5)
+    docs = load_documents()
     texts = split_documents(docs)
     vs = create_vector_db(texts)
 
@@ -67,8 +84,7 @@ def main():
     retriever = vs.as_retriever()
 
     output_parser = StrOutputParser()
-    chain = basic_chain(model, prompt)
-    base_chain = chain | output_parser
+    base_chain = prompt | model | output_parser
     rag_chain = make_rag_chain(model, retriever) | output_parser
 
     questions = [

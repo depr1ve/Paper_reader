@@ -4,8 +4,7 @@ from typing import List
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from src.local_loader import get_document_text
-from src.remote_loader import download_file
+from src.local_loader import load_documents
 from src.splitter import split_documents
 from dotenv import load_dotenv
 from time import sleep
@@ -57,27 +56,16 @@ def find_similar(vs, query):
 def main():
     load_dotenv()
 
-    pdf_filename = "examples/mal_boole.pdf"
+    from src.local_loader import load_documents
 
-    if not os.path.exists(pdf_filename):
-        math_analysis_of_logic_by_boole = "https://www.gutenberg.org/files/36884/36884-pdf.pdf"
-        local_pdf_path = download_file(math_analysis_of_logic_by_boole, pdf_filename)
-    else:
-        local_pdf_path = pdf_filename
-
-    print(f"PDF path is {local_pdf_path}")
-
-    with open(local_pdf_path, "rb") as pdf_file:
-        docs = get_document_text(pdf_file, title="Analysis of Logic")
-
+    docs = load_documents()
     texts = split_documents(docs)
     vs = create_vector_db(texts)
 
-    results = find_similar(vs, query="What is meant by the simple conversion of a proposition?")
+    results = find_similar(vs, query="这篇论文的主要内容是什么？")
     MAX_CHARS = 300
     print("=== Results ===")
     for i, text in enumerate(results):
-        # cap to max length but split by words.
         content = text.page_content
         n = max(content.find(' ', MAX_CHARS), MAX_CHARS)
         content = text.page_content[:n]

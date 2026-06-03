@@ -57,8 +57,6 @@ class HybridSupabaseRetriever(BaseRetriever):
                 metadata={
                     **(row.get("metadata") or {}),
                     "id": row["id"],
-                    "similarity": row["similarity"],
-                    "source": "supabase_hybrid",
                 },
             )
             docs.append(doc)
