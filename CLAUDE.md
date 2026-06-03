@@ -14,7 +14,7 @@
 | 向量库（云端） | **Supabase pgvector**（表 `papers`，函数 `match_papers`） |
 | 检索策略 | 关键词+向量混合检索，权重 0.5:0.5（Chroma: BM25, Supabase: pg_trgm） |
 | 分块 | `RecursiveCharacterTextSplitter`，chunk_size=1000，overlap=200 |
-| 元数据 | L1：文档名、页码、章节标题、章节类型、chunk 位置索引 |
+| 元数据 | L1：论文标题、章节标题、章节类型、chunk 序号 |
 | 对话记忆 | `RunnableWithMessageHistory`，自动将追问改写为独立问题 |
 | UI | Streamlit，Markdown + LaTeX 公式渲染 |
 
@@ -36,18 +36,16 @@ src/
 └── filter.py             # 检索结果去重+重排序
 ```
 
-## Metadata（L1 结构化标注）
+## Metadata
 
-切分阶段自动为每个 chunk 注入 6 个元数据字段：
+切分阶段自动为每个 chunk 注入 4 个元数据字段：
 
 | 字段 | 来源 | 说明 |
 |------|------|------|
-| `source` | local_loader | 论文文件名 |
 | `paper_title` | local_loader | 论文标题（优先 PDF 元数据，回退文件名） |
 | `section_title` | splitter | 章节标题（正则匹配，扫描前 5 行） |
 | `section_type` | splitter | 章节分类（abstract/introduction/methods/experiments/discussion/conclusion/appendix/body） |
 | `chunk_index` | splitter | chunk 在全文中的序号 |
-| `total_chunks` | splitter | 全文 chunk 总数 |
 
 `format_docs()` 以章节标题标注上下文，同一章节的多个 chunk 合并避免重复标签：
 ```
@@ -107,7 +105,7 @@ pypdf, rank-bm25, rich, python-dotenv
 
 - `.streamlit/` 和 `.env` 在 `.gitignore` 中，不会提交到 GitHub
 - Embedding 模型首次运行从 HuggingFace 下载（约 100MB），国内需配置 `HF_ENDPOINT` 镜像
-- Streamlit Cloud 部署前确保已建好 Supabase 表和 `match_papers`、`hybrid_match_papers` 函数，并启用 `pg_trgm` 扩展
+- Streamlit Cloud 部署前确保已建好 Supabase 表和函数（完整 SQL 见 `SQL/supabase.sql`，在 Supabase SQL Editor 中粘贴执行即可）
 - 本地 Chroma 模式：论文 PDF 放在 `data/` 目录，启动后上传或自动加载
-- Supabase 从国内访问可能需要代理，配置 `SUPABASE_PROXY`
+
 

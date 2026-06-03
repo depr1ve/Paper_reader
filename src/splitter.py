@@ -112,11 +112,13 @@ def split_documents(docs):
     for t in texts:
         by_source[t.metadata.get('source', t.metadata.get('title', ''))].append(t)
 
-    for source, chunks in by_source.items():
-        total = len(chunks)
+    for _source, chunks in by_source.items():
         for i, chunk in enumerate(chunks):
             chunk.metadata['chunk_index'] = i
-            chunk.metadata['total_chunks'] = total
+
+    # 分组完成后清理 source（与 paper_title 冗余，仅 paper_title 进入下游）
+    for t in texts:
+        t.metadata.pop('source', None)
 
     # 2. 检测章节标题
     current_section_title = None
