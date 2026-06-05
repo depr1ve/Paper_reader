@@ -74,8 +74,6 @@ def create_full_chain(retriever, chat_memory=ChatMessageHistory()):
 
 > "在 ImageNet 数据集上，我们的方法达到了 85.7% 的 top-1 准确率。" —— 第4.1节
 
-注意：原文必须用中文双引号 "" 包裹，不要省略引号。
-
 4. 如果上下文中不包含某信息，直接说"论文中未提及"，不要猜测或使用你的预训练知识补全。
 5. 数学公式使用 Markdown LaTeX 格式：行内 $...$，独立 $$...$$。不要使用 \\[...\\]。
 
