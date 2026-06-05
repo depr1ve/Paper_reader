@@ -1,3 +1,75 @@
+# ============================================================================
+# Paper Reader - RAG 论文问答系统 依赖与安装说明
+# ============================================================================
+#
+# 快速开始：
+#   1. 安装依赖:      pip install -r requirements.txt
+#   2. 准备模型:      下载 Embedding + Reranker 模型到 models/ 目录（见下方说明）
+#   3. 配置密钥:      复制 .env.example 为 .env，填入 DeepSeek API Key
+#   4. 放置论文:      将 PDF/TXT 论文放入 data/ 目录
+#   5. 启动应用:      python run_app.py
+#
+# ============================================================================
+# 模型准备（必须在安装依赖后完成，共 2 个模型约 3.5GB）
+# ============================================================================
+#
+# 方式一：首次运行时自动从 HuggingFace 下载（需联网）
+#   启动后 config.py 会自动检测 models/ 目录，若未找到则从 HuggingFace 在线下载。
+#   国内用户需在 .env 中设置 HF_ENDPOINT=https://hf-mirror.com 加速。
+#
+# 方式二：手动下载放置（离线 / 加速）
+#   1. 下载以下两个模型：
+#      - Embedding:  BAAI/bge-small-zh-v1.5      (~100MB)
+#      - Reranker:   BAAI/bge-reranker-base       (~1.1GB)
+#
+#   2. 在 models/ 下按 HuggingFace 缓存目录结构放置：
+#      models/
+#      └── hub/
+#          ├── models--BAAI--bge-small-zh-v1.5/
+#          │   └── snapshots/<hash>/
+#          │       ├── config.json
+#          │       ├── tokenizer.json
+#          │       └── pytorch_model.bin   (或 model.safetensors)
+#          └── models--BAAI--bge-reranker-base/
+#              └── snapshots/<hash>/
+#                  ├── config.json
+#                  └── pytorch_model.bin   (或 model.safetensors)
+#
+#   3. 或直接放扁平结构（config.json 在模型目录根）：
+#      models/
+#      └── hub/
+#          ├── models--BAAI--bge-small-zh-v1.5/
+#          │   ├── config.json
+#          │   └── ...
+#          └── models--BAAI--bge-reranker-base/
+#              ├── config.json
+#              └── ...
+#
+#   config.py 启动时自动扫描 models/hub/ 目录，无需额外配置路径。
+#
+# ============================================================================
+# 配置方式（详见 .env.example）
+# ============================================================================
+#
+# 最少必填：
+#   DEEPSEEK_API_KEY    DeepSeek API Key（在 platform.deepseek.com 获取）
+#
+# 国内推荐：
+#   HF_ENDPOINT=https://hf-mirror.com    加速 HuggingFace 模型下载
+#
+# 部署到 Streamlit Cloud 时必须用 Supabase：
+#   VECTOR_BACKEND=supabase
+#   SUPABASE_URL=...
+#   SUPABASE_KEY=...
+#
+# ============================================================================
+# 运行
+# ============================================================================
+#   python run_app.py          # 启动 Streamlit，默认 http://localhost:8501
+#   或直接: streamlit run streamlit_app.py
+#
+# ============================================================================
+
 streamlit
 python-dotenv
 pypdf
