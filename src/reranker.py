@@ -21,8 +21,18 @@ class Reranker:
     @property
     def model(self):
         if self._model is None:
+            import os
+            import sys
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(self._model_path)
+
+            # CrossEncoder 初始化会打印模型架构到 stdout，重定向到 devnull
+            with open(os.devnull, "w") as devnull:
+                old_stdout = sys.stdout
+                sys.stdout = devnull
+                try:
+                    self._model = CrossEncoder(self._model_path)
+                finally:
+                    sys.stdout = old_stdout
         return self._model
 
     def rerank(
