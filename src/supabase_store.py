@@ -29,8 +29,8 @@ class HybridSupabaseRetriever(BaseRetriever):
     query_name: str = SUPABASE_HYBRID_QUERY_NAME
     """Supabase RPC 函数名."""
 
-    k: int = 4
-    """返回文档数量."""
+    k: int = 20
+    """返回文档数量（宽召回，后续由 reranker 精排压缩）."""
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: Optional[CallbackManagerForRetrieverRun] = None
@@ -104,16 +104,18 @@ def add_documents_to_supabase(docs, embeddings):
     return store
 
 
-def get_supabase_retriever(embeddings):
+def get_supabase_retriever(embeddings, k=20):
     """获取 Supabase 混合检索器（只读，用于问答）
 
     使用自定义 HybridSupabaseRetriever，将查询文本和向量同时发送到
     hybrid_match_papers SQL 函数，实现向量 + 关键词混合检索（权重 0.5:0.5）。
+
+    k 应为宽召回值（如 20），后续由 reranker 精排压缩。
     """
     client = get_supabase_client()
     return HybridSupabaseRetriever(
         client=client,
         embedding=embeddings,
         query_name=SUPABASE_HYBRID_QUERY_NAME,
-        k=4,
+        k=k,
     )

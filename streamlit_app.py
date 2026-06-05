@@ -94,16 +94,26 @@ def get_embeddings():
 def get_local_retriever():
     from src.local_loader import load_documents
     from src.ensemble import ensemble_retriever_from_docs
+    from src.reranker import Reranker, RerankingRetriever
+    from src.config import RERANKER_MODEL_PATH
     docs = load_documents()
     embeddings = get_embeddings()
-    return ensemble_retriever_from_docs(docs, embeddings=embeddings)
+    base = ensemble_retriever_from_docs(docs, embeddings=embeddings, k=20)
+    reranker = Reranker(RERANKER_MODEL_PATH)
+    reranker.model  # 启动时预加载，避免首次提问等待
+    return RerankingRetriever(base_retriever=base, reranker=reranker, k_final=5)
 
 
 @st.cache_resource
 def get_supabase_retriever(_url, _key):
     from src.supabase_store import get_supabase_retriever as sup_ret
+    from src.reranker import Reranker, RerankingRetriever
+    from src.config import RERANKER_MODEL_PATH
     embeddings = get_embeddings()
-    return sup_ret(embeddings)
+    base = sup_ret(embeddings, k=20)
+    reranker = Reranker(RERANKER_MODEL_PATH)
+    reranker.model  # 启动时预加载，避免首次提问等待
+    return RerankingRetriever(base_retriever=base, reranker=reranker, k_final=5)
 
 
 # ---- 处理上传 ----
@@ -178,7 +188,7 @@ def ensure_chain():
     if backend == "supabase" and (not url or not key):
         return None, False
 
-    with st.spinner("⏳ 正在加载 Embedding 模型（首次运行需下载约 100MB，请耐心等待）..."):
+    with st.spinner("⏳ 正在加载模型（Embedding 92MB + Reranker 1.1GB，本地加载约 10s）..."):
         try:
             chain = build_chain(backend, url, key)
             st.session_state.chain = chain
