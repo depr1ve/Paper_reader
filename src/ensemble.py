@@ -1,14 +1,8 @@
-import os
-
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
-from langchain_core.output_parsers import StrOutputParser
 
-from src.config import get_model
-from src.rag_chain import make_rag_chain
 from src.splitter import split_documents
 from src.vector_store import create_vector_db
-from dotenv import load_dotenv
 
 
 def ensemble_retriever_from_docs(docs, embeddings=None):
@@ -26,21 +20,4 @@ def ensemble_retriever_from_docs(docs, embeddings=None):
     return ensemble_retriever
 
 
-def main():
-    load_dotenv()
-
-    from src.local_loader import load_documents
-    docs = load_documents()
-    ensemble_retriever = ensemble_retriever_from_docs(docs)
-    model = get_model("DeepSeek")
-    chain = make_rag_chain(model, ensemble_retriever) | StrOutputParser()
-
-    result = chain.invoke("请帮我总结这篇论文的主要内容。")
-    print(result)
-
-
-if __name__ == "__main__":
-    # this is to quite parallel tokenizers warning.
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    main()
 

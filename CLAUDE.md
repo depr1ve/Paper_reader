@@ -12,7 +12,7 @@
 | Embedding | **BAAI/bge-small-zh-v1.5**（本地运行，维度 512，中文优化） |
 | 向量库（本地） | Chroma，持久化到 `store/` |
 | 向量库（云端） | **Supabase pgvector**（表 `papers`，函数 `match_papers`） |
-| 检索策略 | 关键词+向量混合检索，权重 0.5:0.5（Chroma: BM25, Supabase: pg_trgm） |
+| 检索策略 | 关键词+向量混合检索，**RRF 融合** `0.5/(rank+60)`（Chroma: BM25, Supabase: PGroonga BM25-like） |
 | 分块 | `RecursiveCharacterTextSplitter`，chunk_size=1000，overlap=200 |
 | 元数据 | L1：论文标题、章节标题、章节类型、chunk 序号 |
 | 对话记忆 | `RunnableWithMessageHistory`，自动将追问改写为独立问题 |
@@ -25,15 +25,12 @@ streamlit_app.py          # Streamlit 主页面
 run_app.py                # PyCharm 本地入口
 src/
 ├── config.py             # 配置 + LLM 工厂（get_model）
-├── local_loader.py       # 加载 data/ 下的 PDF/TXT（注入文档级 metadata）
-├── splitter.py           # 文档切分 + 章节检测 + L1 metadata 注入
+├── local_loader.py       # 加载 data/ 下的 PDF/TXT
+├── splitter.py           # 文档切分 + 章节检测 + metadata 注入
 ├── vector_store.py       # Chroma 本地向量库
 ├── supabase_store.py     # Supabase 云端向量库（支持代理）
-├── ensemble.py           # BM25 + 向量混合检索
-├── rag_chain.py          # RAG 核心链 + format_docs（拼接 metadata 上下文标签）
-├── memory.py             # 多轮对话记忆
-├── full_chain.py         # 完整问答链（含 system prompt）
-└── filter.py             # 检索结果去重+重排序
+├── ensemble.py           # BM25 + 向量混合检索（本地 Chroma 用）
+└── full_chain.py         # 完整问答链：问题改写 + RAG + 多轮对话记忆
 ```
 
 ## Metadata
@@ -72,6 +69,7 @@ chunk3 正文...
 - 必须用 Cloud Secrets 配置（`secrets.toml` 不会推送到 GitHub）
 - 必须用 `VECTOR_BACKEND=supabase`（Cloud 磁盘不持久化）
 - Cloud 使用 Python 3.14，`requirements.txt` 不锁版本号以保持兼容
+- Supabase 需启用三个扩展：`vector`、`pgroonga`（全库 SQL 见 `SQL/supabase.sql`）
 
 ## 配置项
 
@@ -106,6 +104,7 @@ pypdf, rank-bm25, rich, python-dotenv
 - `.streamlit/` 和 `.env` 在 `.gitignore` 中，不会提交到 GitHub
 - Embedding 模型首次运行从 HuggingFace 下载（约 100MB），国内需配置 `HF_ENDPOINT` 镜像
 - Streamlit Cloud 部署前确保已建好 Supabase 表和函数（完整 SQL 见 `SQL/supabase.sql`，在 Supabase SQL Editor 中粘贴执行即可）
+  - 混合检索使用 **PGroonga + pgvector** 双路 RRF 融合，需启用 `pgroonga` 扩展
 - 本地 Chroma 模式：论文 PDF 放在 `data/` 目录，启动后上传或自动加载
 
 

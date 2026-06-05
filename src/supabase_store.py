@@ -53,10 +53,10 @@ class HybridSupabaseRetriever(BaseRetriever):
         docs: List[Document] = []
         for row in response.data:
             doc = Document(
-                page_content=row["content"],
+                page_content=row["out_content"],
                 metadata={
-                    **(row.get("metadata") or {}),
-                    "id": row["id"],
+                    **(row.get("out_meta") or {}),
+                    "id": row["out_id"],
                 },
             )
             docs.append(doc)
